@@ -46,18 +46,21 @@ def test_health_endpoint_returns_ok() -> None:
     assert "version" in body
 
 
-def test_settings_require_anthropic_key() -> None:
-    """Settings must fail loudly when a required key is missing."""
+def test_settings_require_anthropic_key(tmp_path, monkeypatch) -> None:
+    """Settings must fail loudly when a required key is missing.
+
+    We cd into a tmp dir so pydantic-settings won't find a real .env file.
+    """
     from pydantic import ValidationError
 
     from app.config import Settings, get_settings
 
     get_settings.cache_clear()
-    del os.environ["ANTHROPIC_API_KEY"]
+    monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+    monkeypatch.chdir(tmp_path)  # tmp dir has no .env
 
     with pytest.raises(ValidationError):
         Settings()  # type: ignore[call-arg]
-
 
 def test_solana_not_configured_in_phase_3() -> None:
     """By default (no HELIUS_API_KEY), solana_configured is False.
