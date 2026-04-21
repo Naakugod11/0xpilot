@@ -8,8 +8,10 @@ from starlette.middleware.base import BaseHTTPMiddleware
 
 from app import __version__
 from app.api.middleware import request_context_middleware
+from app.api.routes import router as api_router
 from app.config import get_settings
 from app.observability.logger import get_logger, setup_logging
+from app.tools import build_default_registry
 
 
 def create_app() -> FastAPI:
@@ -24,8 +26,10 @@ def create_app() -> FastAPI:
         version=__version__,
     )
 
-    # Order matters: CORS outermost, then our context middleware (so it wraps
-    # the actual request handler and captures the full duration).
+    # Tool registry — built once at startup, shared across all requests
+    app.state.tool_registry = build_default_registry()
+
+    # Middleware — CORS outermost, then request context (wraps actual handler)
     if settings.cors_allowed_origins:
         app.add_middleware(
             CORSMiddleware,
@@ -36,6 +40,9 @@ def create_app() -> FastAPI:
         )
 
     app.add_middleware(BaseHTTPMiddleware, dispatch=request_context_middleware)
+
+    # Routes
+    app.include_router(api_router)
 
     @app.get("/health")
     async def health() -> dict[str, str]:
@@ -50,6 +57,7 @@ def create_app() -> FastAPI:
         version=__version__,
         environment=settings.environment,
         model=settings.anthropic_model,
+        tools_registered=len(app.state.tool_registry.names()),
     )
 
     return app
