@@ -56,8 +56,9 @@ select = [
     "RUF", # ruff-specific rules
 ]
 ignore = [
-    "E501",  # line too long (handled by formatter)
-    "B008",  # function calls in defaults (FastAPI uses Depends())
+    "E501",   # line too long (handled by formatter)
+    "B008",   # function calls in defaults (FastAPI uses Depends())
+    "RUF012", # mutable class attrs - tool schemas are intentionally class-level constants
 ]
 
 [tool.ruff.format]

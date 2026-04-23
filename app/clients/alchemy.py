@@ -40,15 +40,15 @@ class AlchemyClient:
     def __init__(self, api_key: str | None = None, timeout: float = 10.0) -> None:
         self._api_key = api_key or get_settings().alchemy_api_key
         self._client = httpx.AsyncClient(timeout=timeout)
-    
+
     async def aclose(self) -> None:
         await self._client.aclose()
-    
+
     def _url(self, chain: Chain) ->str:
         if chain not in _ALCHEMY_SUBDOMAINS:
             raise AlchemyError(f"Unsupported chain: {chain}")
         return f"https://{_ALCHEMY_SUBDOMAINS[chain]}.g.alchemy.com/v2/{self._api_key}"
-    
+
     @retry(
         stop=stop_after_attempt(3),
         wait=wait_exponential(multiplier=0.5, min=0.5, max=4),
@@ -66,7 +66,7 @@ class AlchemyClient:
             err = data["error"]
             raise AlchemyError(f"RPC error {err.get('code')}: {err.get('message')}")
         return data["result"]
-    
+
     async def get_gas_price(self, chain: Chain) -> int:
         """Return current gas price in wei for the given chain."""
         logger.debug("alchemy.get_gas_price", chain=chain)

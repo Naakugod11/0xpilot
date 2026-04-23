@@ -34,7 +34,7 @@ class GasPriceTool(BaseTool):
 
     def __init__(self, client: AlchemyClient | None = None) -> None:
         self._client = client or AlchemyClient()
-    
+
     async def execute(self, chain: Chain, **_: Any) -> dict[str, Any]:
         wei = await self._client.get_gas_price(chain)
         gwei = wei / WEI_PER_GWEI
