@@ -81,8 +81,16 @@ def build_default_registry() -> ToolRegistry:
     This is the only place where tools get instantiated for the running app.
     Keep imports inside the function to avoid circular imports at module load.
     """
+    from app.tools.market import (
+        GetTokenOverviewTool,
+        GetTokenSocialStatsTool,
+        ScanNewPairsTool,
+    )
     from app.tools.onchain import GasPriceTool
 
     registry = ToolRegistry()
     registry.register(GasPriceTool())
+    registry.register(GetTokenOverviewTool())
+    registry.register(ScanNewPairsTool())
+    registry.register(GetTokenSocialStatsTool())
     return registry

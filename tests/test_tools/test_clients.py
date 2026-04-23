@@ -86,3 +86,60 @@ async def test_retries_on_transport_error(client: AlchemyClient) -> None:
     result = await client.get_gas_price("base")
     assert result == 1
     assert route.call_count == 2
+
+# ─── DexscreenerClient tests ─────────────────────────────────────────
+
+
+@pytest.fixture
+async def dex_client():
+    from app.clients.dexscreener import DexscreenerClient
+
+    c = DexscreenerClient()
+    yield c
+    await c.aclose()
+
+
+@respx.mock
+async def test_dexscreener_get_pairs_by_token(dex_client) -> None:
+    from app.clients.dexscreener import DexscreenerClient  # noqa: F401 (keep import for respx)
+
+    respx.get("https://api.dexscreener.com/tokens/v1/base/0xtoken").mock(
+        return_value=httpx.Response(
+            200,
+            json=[
+                {"pairAddress": "0xpair1", "liquidity": {"usd": 1000}},
+                {"pairAddress": "0xpair2", "liquidity": {"usd": 5000}},
+            ],
+        )
+    )
+
+    pairs = await dex_client.get_pairs_by_token("base", "0xtoken")
+    assert len(pairs) == 2
+    assert pairs[1]["pairAddress"] == "0xpair2"
+
+
+@respx.mock
+async def test_dexscreener_empty_response_returns_empty_list(dex_client) -> None:
+    respx.get("https://api.dexscreener.com/tokens/v1/ethereum/0xnone").mock(
+        return_value=httpx.Response(200, json=[])
+    )
+
+    pairs = await dex_client.get_pairs_by_token("ethereum", "0xnone")
+    assert pairs == []
+
+
+@respx.mock
+async def test_dexscreener_get_latest_profiles(dex_client) -> None:
+    respx.get("https://api.dexscreener.com/token-profiles/latest/v1").mock(
+        return_value=httpx.Response(
+            200,
+            json=[
+                {"chainId": "base", "tokenAddress": "0xa"},
+                {"chainId": "solana", "tokenAddress": "solX"},
+            ],
+        )
+    )
+
+    profiles = await dex_client.get_latest_token_profiles()
+    assert len(profiles) == 2
+    assert profiles[0]["chainId"] == "base"
