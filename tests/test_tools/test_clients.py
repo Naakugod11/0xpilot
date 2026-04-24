@@ -207,3 +207,63 @@ async def test_goplus_raises_when_token_missing(goplus_client) -> None:
 
     with pytest.raises(GoPlusError, match="No security data"):
         await goplus_client.get_token_security("ethereum", "0xunknown")
+
+# ─── ZerionClient tests ──────────────────────────────────────────────
+
+
+@pytest.fixture
+async def zerion_client():
+    from app.clients.zerion import ZerionClient
+
+    c = ZerionClient(api_key="test-zerion-key")
+    yield c
+    await c.aclose()
+
+
+@respx.mock
+async def test_zerion_get_pnl_returns_attributes(zerion_client) -> None:
+    respx.get("https://api.zerion.io/v1/wallets/0xabc/pnl/").mock(
+        return_value=httpx.Response(
+            200,
+            json={
+                "data": {
+                    "type": "pnl",
+                    "attributes": {
+                        "realized_gain": 100.0,
+                        "unrealized_gain": 50.0,
+                    },
+                }
+            },
+        )
+    )
+
+    attrs = await zerion_client.get_wallet_pnl("0xABC")
+    assert attrs["realized_gain"] == 100.0
+
+
+@respx.mock
+async def test_zerion_202_retries_then_succeeds(zerion_client) -> None:
+    route = respx.get("https://api.zerion.io/v1/wallets/0xfresh/pnl/")
+    route.side_effect = [
+        httpx.Response(202, text=""),
+        httpx.Response(
+            200,
+            json={"data": {"attributes": {"realized_gain": 0}}},
+        ),
+    ]
+
+    attrs = await zerion_client.get_wallet_pnl("0xfresh")
+    assert attrs["realized_gain"] == 0
+    assert route.call_count == 2
+
+
+@respx.mock
+async def test_zerion_401_raises_clean_error(zerion_client) -> None:
+    from app.clients.zerion import ZerionError
+
+    respx.get("https://api.zerion.io/v1/wallets/0xabc/pnl/").mock(
+        return_value=httpx.Response(401, json={"error": "unauthorized"})
+    )
+
+    with pytest.raises(ZerionError, match="Unauthorized"):
+        await zerion_client.get_wallet_pnl("0xabc")

@@ -84,6 +84,7 @@ def build_default_registry() -> ToolRegistry:
     )
     from app.tools.onchain import GasPriceTool
     from app.tools.security import GetHolderDistributionTool, GetTokenSecurityTool
+    from app.tools.wallet import GetWalletPnlTool, TrackSmartMoneyTool
 
     registry = ToolRegistry()
     registry.register(GasPriceTool())
@@ -92,4 +93,6 @@ def build_default_registry() -> ToolRegistry:
     registry.register(GetTokenSocialStatsTool())
     registry.register(GetTokenSecurityTool())
     registry.register(GetHolderDistributionTool())
+    registry.register(GetWalletPnlTool())
+    registry.register(TrackSmartMoneyTool())
     return registry
