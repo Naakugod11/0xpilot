@@ -143,3 +143,67 @@ async def test_dexscreener_get_latest_profiles(dex_client) -> None:
     profiles = await dex_client.get_latest_token_profiles()
     assert len(profiles) == 2
     assert profiles[0]["chainId"] == "base"
+
+
+# ─── GoPlusClient tests ──────────────────────────────────────────────
+
+
+@pytest.fixture
+async def goplus_client():
+    from app.clients.goplus import GoPlusClient
+
+    c = GoPlusClient()
+    yield c
+    await c.aclose()
+
+
+@respx.mock
+async def test_goplus_returns_token_data(goplus_client) -> None:
+    respx.get("https://api.gopluslabs.io/api/v1/token_security/8453").mock(
+        return_value=httpx.Response(
+            200,
+            json={
+                "code": 1,
+                "message": "OK",
+                "result": {
+                    "0xpepe": {
+                        "token_name": "Pepe",
+                        "is_honeypot": "0",
+                        "holder_count": "100",
+                    }
+                },
+            },
+        )
+    )
+
+    data = await goplus_client.get_token_security("base", "0xPEPE")
+    assert data["token_name"] == "Pepe"
+    assert data["is_honeypot"] == "0"
+
+
+@respx.mock
+async def test_goplus_raises_on_non_ok_code(goplus_client) -> None:
+    from app.clients.goplus import GoPlusError
+
+    respx.get("https://api.gopluslabs.io/api/v1/token_security/1").mock(
+        return_value=httpx.Response(
+            200, json={"code": 2020, "message": "non-contract address", "result": {}}
+        )
+    )
+
+    with pytest.raises(GoPlusError, match="code=2020"):
+        await goplus_client.get_token_security("ethereum", "0xnotacontract")
+
+
+@respx.mock
+async def test_goplus_raises_when_token_missing(goplus_client) -> None:
+    from app.clients.goplus import GoPlusError
+
+    respx.get("https://api.gopluslabs.io/api/v1/token_security/1").mock(
+        return_value=httpx.Response(
+            200, json={"code": 1, "message": "OK", "result": {}}
+        )
+    )
+
+    with pytest.raises(GoPlusError, match="No security data"):
+        await goplus_client.get_token_security("ethereum", "0xunknown")
