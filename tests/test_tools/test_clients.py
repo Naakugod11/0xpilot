@@ -222,7 +222,7 @@ async def zerion_client():
 
 @respx.mock
 async def test_zerion_get_pnl_returns_attributes(zerion_client) -> None:
-    respx.get("https://api.zerion.io/v1/wallets/0xabc/pnl/").mock(
+    respx.get("https://api.zerion.io/v1/wallets/0xabc/pnl").mock(
         return_value=httpx.Response(
             200,
             json={
@@ -243,7 +243,7 @@ async def test_zerion_get_pnl_returns_attributes(zerion_client) -> None:
 
 @respx.mock
 async def test_zerion_202_retries_then_succeeds(zerion_client) -> None:
-    route = respx.get("https://api.zerion.io/v1/wallets/0xfresh/pnl/")
+    route = respx.get("https://api.zerion.io/v1/wallets/0xfresh/pnl")
     route.side_effect = [
         httpx.Response(202, text=""),
         httpx.Response(
@@ -261,9 +261,72 @@ async def test_zerion_202_retries_then_succeeds(zerion_client) -> None:
 async def test_zerion_401_raises_clean_error(zerion_client) -> None:
     from app.clients.zerion import ZerionError
 
-    respx.get("https://api.zerion.io/v1/wallets/0xabc/pnl/").mock(
+    respx.get("https://api.zerion.io/v1/wallets/0xabc/pnl").mock(
         return_value=httpx.Response(401, json={"error": "unauthorized"})
     )
 
     with pytest.raises(ZerionError, match="Unauthorized"):
         await zerion_client.get_wallet_pnl("0xabc")
+
+# ─── CoingeckoClient tests ───────────────────────────────────────────
+
+
+@pytest.fixture
+async def cg_client():
+    from app.clients.coingecko import CoingeckoClient
+
+    c = CoingeckoClient(api_key="test-cg-key")
+    yield c
+    await c.aclose()
+
+
+@respx.mock
+async def test_coingecko_get_ohlc(cg_client) -> None:
+    respx.get("https://api.coingecko.com/api/v3/coins/ethereum/ohlc").mock(
+        return_value=httpx.Response(
+            200,
+            json=[
+                [1_700_000_000_000, 100, 110, 95, 105],
+                [1_700_086_400_000, 105, 120, 100, 115],
+            ],
+        )
+    )
+
+    ohlc = await cg_client.get_ohlc("ethereum", days=7)
+    assert len(ohlc) == 2
+    assert ohlc[0][4] == 105  # close
+
+
+@respx.mock
+async def test_coingecko_rate_limit_raises(cg_client) -> None:
+    from app.clients.coingecko import CoingeckoError
+
+    respx.get("https://api.coingecko.com/api/v3/coins/bitcoin/ohlc").mock(
+        return_value=httpx.Response(429, json={"status": {"error_code": 429}})
+    )
+
+    with pytest.raises(CoingeckoError, match="Rate limited"):
+        await cg_client.get_ohlc("bitcoin", days=7)
+
+
+@respx.mock
+async def test_coingecko_get_price_at_picks_nearest(cg_client) -> None:
+    target = 1_700_000_000
+    respx.get("https://api.coingecko.com/api/v3/coins/ethereum/market_chart/range").mock(
+        return_value=httpx.Response(
+            200,
+            json={
+                "prices": [
+                    [(target - 100) * 1000, 1900.0],
+                    [(target - 5) * 1000, 2000.0],  # closest to target
+                    [(target + 3600) * 1000, 2050.0],
+                ],
+                "market_caps": [],
+                "total_volumes": [],
+            },
+        )
+    )
+
+    price, ts_ms = await cg_client.get_price_at("ethereum", target)
+    assert price == 2000.0
+    assert ts_ms == (target - 5) * 1000

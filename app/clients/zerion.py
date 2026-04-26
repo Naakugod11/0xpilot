@@ -28,7 +28,7 @@ class ZerionError(Exception):
 
 class ZerionNotReady(Exception):
     """Raised when wallet is still being indexed (202 response).
-    
+
     Retried automatically via tenacity.
     """
 
@@ -51,7 +51,7 @@ class ZerionClient:
         # HTTP Basic: api_key as username, empty password
         token = base64.b64encode(f"{self._api_key}:".encode()). decode()
         return f"Basic {token}"
-    
+
     @retry(
         stop=stop_after_attempt(4),
         wait=wait_exponential(multiplier=1, min=1, max=8),
@@ -76,27 +76,27 @@ class ZerionClient:
         if response.status_code == 202:
             # Wallet is beingg indexed; tenacity retries
             raise ZerionNotReady(f"Wallet indexing in progress for {path}")
-        
+
         if response.status_code == 401:
             raise ZerionError("Unauthorized - check ZERION_API_KEY")
-        
+
         if response.status_code == 404:
             raise ZerionError(f"Not found: {path}")
-        
+
         response.raise_for_status()
         return response.json()
-    
+
     async def get_wallet_pnl(
             self, address: str, currency: str = "usd"
     ) -> dict[str, Any]:
         """Realized + unrealized PnL, total bought/sold/received, fees, etc.
-        
+
         Returns the 'data.attributes' dict from the JSON:API response.
         """
         path = f"/wallets/{address.lower()}/pnl"
         data = await self._get(path, params={"currency": currency})
         return (data.get("data") or {}).get("attributes") or {}
-    
+
     async def get_wallet_portfolio(
             self, address: str, currency: str = "usd"
     ) -> dict[str, Any]:
@@ -104,7 +104,7 @@ class ZerionClient:
         path = f"/wallets/{address.lower()}/portfolio"
         data = await self._get(path, params={"currency": currency})
         return (data.get("data") or {}).get("attributes") or {}
-    
+
     async def get_wallet_transactions(
             self,
             address: str,
@@ -112,7 +112,7 @@ class ZerionClient:
             operation_types: list[str] | None = None,
     ) -> list[dict[str, Any]]:
         """Recent transactions. operation_types example: ['trade', 'send'].
-        
+
         Returns the 'data' list from the JSON:API response.
         """
         params: dict[str, Any] = {"page[size]": str(limit)}

@@ -35,7 +35,7 @@ def _load_smart_money() -> list[SmartMoneyEntry]:
     if not SMART_MONEY_YAML.exists():
         logger.warning("smart_money.yaml.missing", path=str(SMART_MONEY_YAML))
         return []
-    
+
     with SMART_MONEY_YAML.open("r") as f:
         raw = yaml.safe_load(f) or {}
 
@@ -112,7 +112,7 @@ class GetWalletPnlTool(BaseTool):
             "total_fee": total_fees,
             "is_net_profitable": is_net_profitable,
         }
-    
+
 # Tool 2: smart money tracking
 
 class TrackSmartMoneyTool(BaseTool):
