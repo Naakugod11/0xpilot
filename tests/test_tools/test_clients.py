@@ -330,3 +330,55 @@ async def test_coingecko_get_price_at_picks_nearest(cg_client) -> None:
     price, ts_ms = await cg_client.get_price_at("ethereum", target)
     assert price == 2000.0
     assert ts_ms == (target - 5) * 1000
+
+# ─── OxbrainClient tests ─────────────────────────────────────────────
+
+
+@pytest.fixture
+async def oxbrain_client():
+    from app.clients.oxbrain import OxbrainClient
+
+    c = OxbrainClient(base_url="https://oxbrain.example.com")
+    yield c
+    await c.aclose()
+
+
+@respx.mock
+async def test_oxbrain_query_returns_json(oxbrain_client) -> None:
+    respx.post("https://oxbrain.example.com/query").mock(
+        return_value=httpx.Response(
+            200,
+            json={
+                "answer": "MEV is...",
+                "sources": [{"text": "...", "metadata": {"source": "doc.pdf"}}],
+            },
+        )
+    )
+
+    data = await oxbrain_client.query("what is mev")
+    assert data["answer"] == "MEV is..."
+    assert len(data["sources"]) == 1
+
+
+@respx.mock
+async def test_oxbrain_404_raises(oxbrain_client) -> None:
+    from app.clients.oxbrain import OxbrainError
+
+    respx.post("https://oxbrain.example.com/query").mock(
+        return_value=httpx.Response(404, text="not found")
+    )
+
+    with pytest.raises(OxbrainError, match="not found"):
+        await oxbrain_client.query("test")
+
+
+@respx.mock
+async def test_oxbrain_500_raises(oxbrain_client) -> None:
+    from app.clients.oxbrain import OxbrainError
+
+    respx.post("https://oxbrain.example.com/query").mock(
+        return_value=httpx.Response(503, text="upstream timeout")
+    )
+
+    with pytest.raises(OxbrainError, match="server error 503"):
+        await oxbrain_client.query("test")

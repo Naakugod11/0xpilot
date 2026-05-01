@@ -77,6 +77,7 @@ class ToolRegistry:
 
 def build_default_registry() -> ToolRegistry:
     """Instantiate the registry with all production tools wired up."""
+    from app.tools.knowledge import Query0xbrainTool, ResolveEnsTool
     from app.tools.market import (
         GetTokenOverviewTool,
         GetTokenSocialStatsTool,
@@ -98,4 +99,6 @@ def build_default_registry() -> ToolRegistry:
     registry.register(TrackSmartMoneyTool())
     registry.register(GetHistoricalOhlcTool())
     registry.register(SimulateEntryTool())
+    registry.register(ResolveEnsTool())
+    registry.register(Query0xbrainTool())
     return registry
