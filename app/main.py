@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from pathlib import Path
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from starlette.middleware.base import BaseHTTPMiddleware
@@ -47,6 +49,22 @@ def create_app() -> FastAPI:
 
     # Routes
     app.include_router(api_router)
+
+    frontend_dir = Path(__file__).resolve().parents[1] / "frontend"
+    if frontend_dir.exists():
+        from fastapi.responses import FileResponse
+        from fastapi.staticfiles import StaticFiles
+
+        app.mount(
+            "/static",
+            StaticFiles(directory=str(frontend_dir)),
+            name="static",
+        )
+
+        @app.get("/")
+        async def serve_index():
+            return FileResponse(str(frontend_dir / "index.html"))
+
 
     @app.get("/health")
     async def health() -> dict[str, str]:

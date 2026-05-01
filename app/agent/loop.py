@@ -143,6 +143,100 @@ class AgentLoop:
             output_tokens=total_output_tokens,
         )
 
+    async def run_streaming(self, user_message: str):
+        """Async generator that yields events as the agent progresses.
+
+        Events are dicts with 'event' key. The route layer formats them as
+        SSE frames. Same logic as run() but emits intermediate updates.
+        """
+        import time as _time
+
+        messages: list[dict[str, Any]] = [{"role": "user", "content": user_message}]
+        tool_calls: list[ToolCallRecord] = []
+        total_input_tokens = 0
+        total_output_tokens = 0
+        iteration = 0
+        stop_reason: StopReason = "end_turn"
+        final_text = ""
+        run_start = _time.perf_counter()
+
+        logger.info("agent.stream.start", message_length=len(user_message))
+
+        while iteration < self._max_iterations:
+            iteration += 1
+            yield {"event": "iteration_start", "iteration": iteration}
+
+            response = await self._client.messages.create(
+                model=self._model,
+                max_tokens=self._max_tokens_per_call,
+                system=SYSTEM_PROMPT,
+                tools=self._registry.get_anthropic_schemas(),
+                messages=messages,
+            )
+            total_input_tokens += response.usage.input_tokens
+            total_output_tokens += response.usage.output_tokens
+
+            if total_input_tokens + total_output_tokens > self._token_budget:
+                stop_reason = "token_budget_exceeded"
+                final_text = self._extract_text(response.content) or (
+                    "Token budget exceeded."
+                )
+                break
+
+            if response.stop_reason != "tool_use":
+                stop_reason = "end_turn"
+                final_text = self._extract_text(response.content)
+                break
+
+            messages.append({"role": "assistant", "content": response.content})
+            tool_result_blocks: list[dict[str, Any]] = []
+
+            for block in response.content:
+                if block.type != "tool_use":
+                    continue
+
+                # Execute and emit per-tool event
+                tr = await self._execute_tool_block(block, iteration, tool_calls)
+                tool_result_blocks.append(tr)
+
+                last_record = tool_calls[-1]
+                yield {
+                    "event": "tool_call",
+                    "iteration": iteration,
+                    "tool_name": last_record.tool_name,
+                    "arguments": last_record.arguments,
+                    "result": last_record.result,
+                    "error": last_record.error,
+                    "duration_ms": last_record.duration_ms,
+                }
+
+            messages.append({"role": "user", "content": tool_result_blocks})
+        else:
+            stop_reason = "max_iterations"
+            final_text = "Reached max iterations before completing analysis."
+
+        # Emit final reply + done
+        yield {"event": "final_reply", "text": final_text}
+
+        if self._metrics is not None:
+            await self._metrics.record_agent_run(
+                iterations=iteration,
+                tool_calls=len(tool_calls),
+                input_tokens=total_input_tokens,
+                output_tokens=total_output_tokens,
+                duration_ms=round((_time.perf_counter() - run_start) * 1000, 2),
+                stop_reason=stop_reason,
+            )
+
+        yield {
+            "event": "done",
+            "iterations_used": iteration,
+            "stop_reason": stop_reason,
+            "input_tokens": total_input_tokens,
+            "output_tokens": total_output_tokens,
+            "tool_calls_count": len(tool_calls),
+        }
+
     async def _execute_tool_block(
         self, block: Any, iteration: int, tool_calls_log: list[ToolCallRecord]
     ) -> dict[str, Any]:
