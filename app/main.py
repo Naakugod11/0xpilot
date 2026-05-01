@@ -11,6 +11,7 @@ from app.api.middleware import request_context_middleware
 from app.api.routes import router as api_router
 from app.config import get_settings
 from app.observability.logger import get_logger, setup_logging
+from app.observability.metrics import MetricsCollector
 from app.tools import build_default_registry
 
 
@@ -28,6 +29,9 @@ def create_app() -> FastAPI:
 
     # Tool registry — built once at startup, shared across all requests
     app.state.tool_registry = build_default_registry()
+
+    # Metrics collector - single instance for the lifetime of the app
+    app.state.metrics = MetricsCollector()
 
     # Middleware — CORS outermost, then request context (wraps actual handler)
     if settings.cors_allowed_origins:

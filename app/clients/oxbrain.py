@@ -48,7 +48,7 @@ class OxbrainClient:
             category_filter: str | None = None,
     ) -> dict[str, Any]:
         """Send a question to 0xbrain. Returns {question, aanswer, sources}.
-        
+
         category_filter: 'btc' | 'eth' | 'solana' | 'defi' | 'oracle' | 'staking'
         """
         url = f"{self._base_url}/query"
@@ -65,7 +65,6 @@ class OxbrainClient:
             raise OxbrainError(
                 f"0xbrain server error {response.status_code}: {response.text[:200]}"
             )
-        
+
         response.raise_for_status()
         return response.json()
-    

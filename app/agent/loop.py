@@ -18,6 +18,7 @@ from app.agent.prompts import SYSTEM_PROMPT
 from app.agent.schemas import ChatResponse, StopReason, ToolCallRecord
 from app.config import get_settings
 from app.observability.logger import get_logger
+from app.observability.metrics import MetricsCollector
 from app.tools.registry import ToolRegistry
 
 logger = get_logger(__name__)
@@ -27,9 +28,10 @@ class AgentLoop:
     and token-budget guards."""
 
     def __init__(
-            self,
-            registry: ToolRegistry,
-            client: AsyncAnthropic | None = None,
+        self,
+        registry: ToolRegistry,
+        client: AsyncAnthropic | None = None,
+        metrics: MetricsCollector | None = None,
     ) -> None:
         settings = get_settings()
         self._registry = registry
@@ -38,9 +40,11 @@ class AgentLoop:
         self._max_iterations = settings.agent_max_iterations
         self._token_budget = settings.agent_max_tokens_budget
         self._max_tokens_per_call = 2048
+        self._metrics = metrics
 
     async def run(self, user_message: str) -> ChatResponse:
         messages: list[dict[str, Any]] = [{"role": "user", "content": user_message}]
+        run_start = time.perf_counter()
         tool_calls: list[ToolCallRecord] = []
         total_input_tokens = 0
         total_output_tokens = 0
@@ -120,6 +124,16 @@ class AgentLoop:
             total_output_tokens=total_output_tokens,
         )
 
+        if self._metrics is not None:
+            await self._metrics.record_agent_run(
+                iterations=iteration,
+                tool_calls=len(tool_calls),
+                input_tokens=total_input_tokens,
+                output_tokens=total_output_tokens,
+                duration_ms=round((time.perf_counter() - run_start) * 1000, 2),
+                stop_reason=stop_reason,
+            )
+
         return ChatResponse(
             reply=final_text,
             tool_calls=tool_calls,
@@ -130,7 +144,7 @@ class AgentLoop:
         )
 
     async def _execute_tool_block(
-            self, block: Any, iteration: int, tool_calls_log: list[ToolCallRecord]
+        self, block: Any, iteration: int, tool_calls_log: list[ToolCallRecord]
     ) -> dict[str, Any]:
         start = time.perf_counter()
         tool_name = block.name
@@ -148,6 +162,8 @@ class AgentLoop:
                     iteration=iteration,
                 )
             )
+            if self._metrics is not None:
+                await self._metrics.record_tool_call(tool_name, duration_ms, success=True)
             return {
                 "type": "tool_result",
                 "tool_use_id": block.id,
@@ -165,6 +181,8 @@ class AgentLoop:
                     iteration=iteration,
                 )
             )
+            if self._metrics is not None:
+                await self._metrics.record_tool_call(tool_name, duration_ms, success=False)
             return {
                 "type": "tool_result",
                 "tool_use_id": block.id,

@@ -1,4 +1,4 @@
-"""HTTP routes for non-chat endpoints (tools listing) and the /chat endpoint."""
+"""HTTP routes for non-chat endpoints (tools listing, metrics) and /chat."""
 
 from __future__ import annotations
 
@@ -22,14 +22,21 @@ async def list_tools(request: Request) -> dict[str, Any]:
     }
 
 
+@router.get("/metrics")
+async def get_metrics(request: Request) -> dict[str, Any]:
+    """Aggregated runtime metrics: agent runs, tool latencies, token usage."""
+    metrics = request.app.state.metrics
+    return await metrics.snapshot()
+
+
 @router.post("/chat", response_model=ChatResponse)
 async def chat(payload: ChatRequest, request: Request) -> ChatResponse:
-    """Single-turn chat with the agent. Step 5: one round of tool use max."""
+    """Single-turn chat with the agent."""
     registry = request.app.state.tool_registry
-    loop = AgentLoop(registry=registry)
+    metrics = request.app.state.metrics
+    loop = AgentLoop(registry=registry, metrics=metrics)
 
     try:
         return await loop.run(payload.message)
     except Exception as exc:
-        # Let the middleware log it; return a clean 500 to the client
         raise HTTPException(status_code=500, detail=f"Agent error: {exc}") from exc
