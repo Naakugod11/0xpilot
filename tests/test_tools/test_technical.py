@@ -1,4 +1,4 @@
-"""Tests for FVG detection tool + Binance client wiring."""
+"""Tests for FVG detection tool + Bybit client wiring."""
 
 from __future__ import annotations
 
@@ -8,7 +8,7 @@ from unittest.mock import AsyncMock
 
 import pytest
 
-from app.clients.binance import BinanceClient
+from app.clients.bybit import BybitClient
 from app.tools.technical import DetectFairValueGapsTool, _detect_fvgs
 
 
@@ -103,7 +103,7 @@ def test_detect_fvgs_empty_input() -> None:
 
 
 async def test_tool_resolves_eth_to_ethusdt_and_returns_summary() -> None:
-    mock = AsyncMock(spec=BinanceClient)
+    mock = AsyncMock(spec=BybitClient)
     mock.get_klines.return_value = [
         _kline(1000, 100, 105, 95, 100),
         _kline(2000, 105, 115, 105, 115),
@@ -121,7 +121,7 @@ async def test_tool_resolves_eth_to_ethusdt_and_returns_summary() -> None:
 
 
 async def test_tool_accepts_full_pair_directly() -> None:
-    mock = AsyncMock(spec=BinanceClient)
+    mock = AsyncMock(spec=BybitClient)
     mock.get_klines.return_value = []
 
     tool = DetectFairValueGapsTool(client=mock)

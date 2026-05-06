@@ -1,7 +1,7 @@
 """Technical analysis tools — currently FVG (fair value gap) detection.
 
-Designed for traders looking at sub-hour timeframes. Uses Binance public
-API for kline data (no auth needed, free, 1200 req/min limit).
+Designed for traders looking at sub-hour timeframes. Uses Bybit v5 public
+API for kline data (no auth needed, works from DE, 1000 req/min limit).
 
 A fair value gap (FVG) — also known as imbalance — is a 3-candle pattern
 where the middle candle creates an unfilled price gap relative to its
@@ -21,7 +21,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from app.clients.binance import BinanceClient
+from app.clients.bybit import BybitClient
 from app.observability.logger import get_logger
 from app.tools.base import BaseTool
 
@@ -128,8 +128,8 @@ class DetectFairValueGapsTool(BaseTool):
         "lookback window with direction, range, size %, and whether "
         "the gap has been filled by later wicks. Useful for ICT/SMC-style "
         "TA, identifying potential support/resistance levels, and "
-        "recent structural imbalances. Uses Binance public API for "
-        "OHLC data — works only for tickers traded on Binance Spot "
+        "recent structural imbalances. Uses Bybit v5 public API for "
+        "OHLC data — works only for tickers traded on Bybit Spot "
         "(majors like ETH, BTC, SOL, plus most top-100 alts)."
     )
     input_schema = {
@@ -138,7 +138,7 @@ class DetectFairValueGapsTool(BaseTool):
             "symbol": {
                 "type": "string",
                 "description": (
-                    "Token ticker (e.g. 'ETH', 'BTC', 'SOL') OR full Binance "
+                    "Token ticker (e.g. 'ETH', 'BTC', 'SOL') OR full Bybit "
                     "pair (e.g. 'ETHUSDT'). Common aliases auto-resolve to "
                     "USDT pairs."
                 ),
@@ -161,8 +161,8 @@ class DetectFairValueGapsTool(BaseTool):
         "required": ["symbol", "interval"],
     }
 
-    def __init__(self, client: BinanceClient | None = None) -> None:
-        self._client = client or BinanceClient()
+    def __init__(self, client: BybitClient | None = None) -> None:
+        self._client = client or BybitClient()
 
     async def execute(
         self,
