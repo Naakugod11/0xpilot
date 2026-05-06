@@ -18,6 +18,7 @@ from typing import Any
 
 from app.observability.logger import get_logger
 from app.tools.base import BaseTool
+from app.tools.technical import DetectFairValueGapsTool
 
 logger = get_logger(__name__)
 
@@ -101,4 +102,5 @@ def build_default_registry() -> ToolRegistry:
     registry.register(SimulateEntryTool())
     registry.register(ResolveEnsTool())
     registry.register(Query0xbrainTool())
+    registry.register(DetectFairValueGapsTool())
     return registry
