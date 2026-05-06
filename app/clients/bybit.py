@@ -40,7 +40,18 @@ class BybitClient:
     """Async client for the Bybit v5 spot market public API."""
 
     def __init__(self, timeout: float = 15.0) -> None:
-        self._client = httpx.AsyncClient(timeout=timeout, follow_redirects=True)
+        self._client = httpx.AsyncClient(
+            timeout=timeout,
+            follow_redirects=True,
+            headers={
+                "User-Agent": (
+                    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+                    "AppleWebKit/537.36 (KHTML, like Gecko) "
+                    "Chrome/120.0.0.0 Safari/537.36"
+                ),
+                "Accept": "application/json",
+            },
+        )
 
     async def aclose(self) -> None:
         await self._client.aclose()
