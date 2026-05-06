@@ -73,7 +73,7 @@ class AlchemyClient:
         result = await self._rpc(chain, "eth_gasPrice", [])
         # return gas price as hex string
         return int(result, 16)
-    
+
     async def get_token_holders(
         self,
         chain: Chain,
@@ -115,7 +115,7 @@ class AlchemyClient:
                 "alchemy.total_supply.failed", chain=chain, contract=contract_address, error=str(exc)
             )
             return None
-    
+
 
 # ─── ENS resolution (raw RPC, no ens package needed) ─────────
 

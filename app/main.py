@@ -66,7 +66,11 @@ def create_app() -> FastAPI:
     @app.get("/health")
     async def health() -> dict[str, str]:
         """Liveness probe used by Railway healthcheck + uptime monitors."""
-        return {"status": "ok"}
+        return {
+            "status": "ok",
+            "environment": settings.environment,
+            "version": app.version,
+        }
 
     # ─── Frontend (static) ─────────────────────────────────────
     # Serve the brutalist terminal UI at /. Files live in `frontend/`.

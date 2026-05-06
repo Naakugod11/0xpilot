@@ -178,8 +178,8 @@ class GetHolderDistributionTool(BaseTool):
         moralis_client: MoralisClient | None = None,
         alchemy_client: AlchemyClient | None = None,
     ) -> None:
-        from app.clients.moralis import MoralisClient  # local import to avoid cycle
         from app.clients.alchemy import AlchemyClient
+        from app.clients.moralis import MoralisClient  # local import to avoid cycle
 
         self._moralis = moralis_client or MoralisClient()
         self._alchemy = alchemy_client or AlchemyClient()
