@@ -30,7 +30,8 @@ class Settings(BaseSettings):
     anthropic_api_key: str = Field(..., description="Anthropic API key")
 
     # ─── Core: EVM data ──────────────────────────────────
-    alchemy_api_key: str = Field(..., description="Alchemy API key (RPC, holders, ENS, gas)")
+    alchemy_api_key: str = Field(..., description="Alchemy API key (RPC, ENS, gas)")
+    moralis_api_key: str = Field(default="", description="Moralis API key (ERC-20 token holders)")
 
     # ─── Wallet intel ────────────────────────────────────
     zerion_api_key: str = Field(..., description="Zerion API key (wallet PnL, transactions)")

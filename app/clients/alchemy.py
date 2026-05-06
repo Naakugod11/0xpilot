@@ -73,6 +73,49 @@ class AlchemyClient:
         result = await self._rpc(chain, "eth_gasPrice", [])
         # return gas price as hex string
         return int(result, 16)
+    
+    async def get_token_holders(
+        self,
+        chain: Chain,
+        contract_address: str,
+        page_key: str | None = None,
+    ) -> dict[str, Any]:
+        """Fetch holders + balances for an ERC-20 token. Paginated.
+
+        Returns dict: {"owners": [{"ownerAddress": "0x...",
+                                    "tokenBalances": [{"balance": "..."}]}],
+                       "pageKey": <next_page_token_or_None>}
+        """
+        url = (
+            f"https://{_ALCHEMY_SUBDOMAINS[chain]}.g.alchemy.com/nft/v3/"
+            f"{self._api_key}/getOwnersForContract"
+        )
+        params: dict[str, Any] = {
+            "contractAddress": contract_address,
+            "withTokenBalances": "true",
+        }
+        if page_key:
+            params["pageKey"] = page_key
+
+        logger.debug("alchemy.get_token_holders", chain=chain, contract=contract_address)
+        response = await self._client.get(url, params=params)
+        response.raise_for_status()
+        return response.json()
+
+    async def get_token_total_supply(self, chain: Chain, contract_address: str) -> int | None:
+        """Read totalSupply() from an ERC-20 contract via eth_call."""
+        # totalSupply() selector = 0x18160ddd
+        try:
+            result_hex = await self._eth_call(chain, contract_address, "0x18160ddd")
+            if not result_hex or result_hex == "0x":
+                return None
+            return int(result_hex, 16)
+        except Exception as exc:
+            logger.warning(
+                "alchemy.total_supply.failed", chain=chain, contract=contract_address, error=str(exc)
+            )
+            return None
+    
 
 # ─── ENS resolution (raw RPC, no ens package needed) ─────────
 

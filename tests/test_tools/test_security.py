@@ -9,7 +9,9 @@ from unittest.mock import AsyncMock
 
 import pytest
 
+from app.clients.alchemy import AlchemyClient
 from app.clients.goplus import GoPlusClient
+from app.clients.moralis import MoralisClient
 from app.tools.security import GetHolderDistributionTool, GetTokenSecurityTool
 
 
@@ -23,6 +25,7 @@ def _env_vars() -> Generator[None, None, None]:
             "ZERION_API_KEY": "test",
             "COINGECKO_API_KEY": "test",
             "OXBRAIN_BASE_URL": "https://oxbrain.example.com",
+            "MORALIS_API_KEY": "test",
         }
     )
     from app.config import get_settings
@@ -131,51 +134,132 @@ async def test_security_tool_normalizes_open_source_and_proxy() -> None:
     assert any("NOT verified" in f for f in result["severe_red_flags"])
 
 
-# ─── GetHolderDistributionTool ───────────────────────────────────────
+# ─── GetHolderDistributionTool (Moralis primary + Alchemy cross-check) ──
 
 
-async def test_holder_distribution_filters_contracts_and_lockers() -> None:
-    mock = AsyncMock(spec=GoPlusClient)
-    mock.get_token_security.return_value = _security_payload()
+def _moralis_response(
+    holders: list[tuple[str, float]],  # (address, percentage)
+    total: int | None = None,
+    cursor: str | None = None,
+) -> dict:
+    """Build a Moralis get_token_holders return value (already parsed by client)."""
+    return {
+        "holders": [
+            {
+                "owner_address": addr,
+                "balance_raw": "1000000000000000000",
+                "percentage": pct,
+                "is_contract": False,
+            }
+            for addr, pct in holders
+        ],
+        "cursor": cursor,
+        "total": total,
+    }
 
-    tool = GetHolderDistributionTool(client=mock)
-    result = await tool.execute(chain="ethereum", token_address="0xabc", top_n=10)
 
-    # Only the 2 real EOA holders should show up in top_n_real_holders
-    assert len(result["top_n_real_holders"]) == 2
-    addrs = [h["address"] for h in result["top_n_real_holders"]]
-    assert "0xwhale1" in addrs
-    assert "0xlp" not in addrs  # is_contract=1 filtered out
+def _alchemy_response(owner_addresses: list[str]) -> dict:
+    """Build a minimal Alchemy getOwnersForContract return value."""
+    return {
+        "owners": [{"ownerAddress": a, "tokenBalances": [{"balance": "0x1"}]} for a in owner_addresses],
+        "pageKey": None,
+    }
+
+
+async def test_holder_distribution_happy_path_sources_agree() -> None:
+    moralis_mock = AsyncMock(spec=MoralisClient)
+    alchemy_mock = AsyncMock(spec=AlchemyClient)
+
+    moralis_mock.get_token_holders.return_value = _moralis_response(
+        [("0xwhale", 10.0), ("0xmid", 5.0), ("0xsmall", 0.1)],
+        total=150,
+    )
+    # Alchemy returns 148 owners — within 10% of Moralis's 150
+    alchemy_mock.get_token_holders.return_value = _alchemy_response(
+        [f"0x{i:040x}" for i in range(148)]
+    )
+
+    tool = GetHolderDistributionTool(moralis_client=moralis_mock, alchemy_client=alchemy_mock)
+    result = await tool.execute(chain="ethereum", token_address="0xtoken", top_n=10)
+
+    assert result["holder_count"] == 150
+    assert len(result["top_n_real_holders"]) == 3
+    assert result["top_n_real_holders"][0]["address"] == "0xwhale"
+    assert result["top_n_real_holders"][0]["percent"] == 10.0
+    assert result["extreme_concentration"] is False
+    assert result["cross_check"]["agreement"] is True
 
 
 async def test_holder_distribution_flags_extreme_concentration() -> None:
-    mock = AsyncMock(spec=GoPlusClient)
-    mock.get_token_security.return_value = _security_payload(
-        holders=[
-            {"address": f"0x{i}", "balance": "1", "percent": "0.07",
-             "is_contract": 0, "is_locked": 0}
-            for i in range(10)
-        ],  # 10 holders * 7% = 70% total
+    moralis_mock = AsyncMock(spec=MoralisClient)
+    alchemy_mock = AsyncMock(spec=AlchemyClient)
+
+    moralis_mock.get_token_holders.return_value = _moralis_response(
+        [("0xwhale1", 50.0), ("0xwhale2", 50.0)],
+        total=2,
     )
+    alchemy_mock.get_token_holders.return_value = _alchemy_response(["0xwhale1", "0xwhale2"])
 
-    tool = GetHolderDistributionTool(client=mock)
-    result = await tool.execute(chain="ethereum", token_address="0xwhale")
+    tool = GetHolderDistributionTool(moralis_client=moralis_mock, alchemy_client=alchemy_mock)
+    result = await tool.execute(chain="ethereum", token_address="0xrug")
 
-    assert result["top10_real_concentration_pct"] == pytest.approx(70.0, rel=1e-3)
+    assert result["top10_real_concentration_pct"] == pytest.approx(100.0, abs=0.001)
     assert result["extreme_concentration"] is True
 
 
-async def test_holder_distribution_respects_top_n() -> None:
-    mock = AsyncMock(spec=GoPlusClient)
-    mock.get_token_security.return_value = _security_payload(
-        holders=[
-            {"address": f"0x{i}", "balance": "1", "percent": "0.02",
-             "is_contract": 0, "is_locked": 0}
-            for i in range(15)
+async def test_holder_distribution_excludes_burn_address() -> None:
+    moralis_mock = AsyncMock(spec=MoralisClient)
+    alchemy_mock = AsyncMock(spec=AlchemyClient)
+
+    moralis_mock.get_token_holders.return_value = _moralis_response(
+        [
+            ("0x000000000000000000000000000000000000dead", 50.0),
+            ("0xrealwhale", 10.0),
+            ("0xother", 5.0),
         ],
+        total=3,
     )
+    alchemy_mock.get_token_holders.return_value = _alchemy_response([])
 
-    tool = GetHolderDistributionTool(client=mock)
-    result = await tool.execute(chain="ethereum", token_address="0xabc", top_n=5)
+    tool = GetHolderDistributionTool(moralis_client=moralis_mock, alchemy_client=alchemy_mock)
+    result = await tool.execute(chain="ethereum", token_address="0xtoken")
 
-    assert len(result["top_n_real_holders"]) == 5
+    addrs = [h["address"] for h in result["top_n_real_holders"]]
+    assert "0x000000000000000000000000000000000000dead" not in addrs
+    assert "0xrealwhale" in addrs
+    assert result["excluded_addresses_count"] == 1
+
+
+async def test_holder_distribution_handles_empty() -> None:
+    moralis_mock = AsyncMock(spec=MoralisClient)
+    alchemy_mock = AsyncMock(spec=AlchemyClient)
+
+    moralis_mock.get_token_holders.return_value = _moralis_response([], total=0)
+    alchemy_mock.get_token_holders.return_value = _alchemy_response([])
+
+    tool = GetHolderDistributionTool(moralis_client=moralis_mock, alchemy_client=alchemy_mock)
+    result = await tool.execute(chain="ethereum", token_address="0xtoken")
+
+    assert result["holder_count"] == 0
+    assert result["top_n_real_holders"] == []
+    assert "No holders" in result["message"]
+    assert result["cross_check"]["agreement"] is True
+
+
+async def test_holder_distribution_cross_check_disagrees_when_sources_differ() -> None:
+    """Alchemy returns 0 (ERC-20 free-tier limit), Moralis returns 12k — agreement=False."""
+    moralis_mock = AsyncMock(spec=MoralisClient)
+    alchemy_mock = AsyncMock(spec=AlchemyClient)
+
+    moralis_mock.get_token_holders.return_value = _moralis_response(
+        [(f"0x{i:040x}", 0.01) for i in range(1, 11)],
+        total=12_000,
+    )
+    alchemy_mock.get_token_holders.return_value = _alchemy_response([])  # 0 owners
+
+    tool = GetHolderDistributionTool(moralis_client=moralis_mock, alchemy_client=alchemy_mock)
+    result = await tool.execute(chain="ethereum", token_address="0xpopular")
+
+    assert result["holder_count"] == 12_000
+    assert result["cross_check"]["alchemy_holder_count"] == 0
+    assert result["cross_check"]["agreement"] is False

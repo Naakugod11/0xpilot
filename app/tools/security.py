@@ -1,17 +1,20 @@
-"""Security + holder distribution tools powered by GoPlus.
+"""Security + holder distribution tools.
 
-Two tools sharing one client :
-- GetTokenSecurityTool: rug indicators (honeypot, liq lock, taxes, etc)
-- GetHolderDistributionTool: top holders, concentration ratio, contract filter
+- GetTokenSecurityTool:        GoPlus — rug indicators (honeypot, liq lock, taxes, etc)
+- GetHolderDistributionTool:   Moralis (primary) + Alchemy (cross-check)
 """
 
 from __future__ import annotations
 
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from app.clients.goplus import Chain, GoPlusClient
 from app.observability.logger import get_logger
 from app.tools.base import BaseTool
+
+if TYPE_CHECKING:
+    from app.clients.alchemy import AlchemyClient
+    from app.clients.moralis import MoralisClient
 
 logger = get_logger(__name__)
 
@@ -132,10 +135,16 @@ class GetTokenSecurityTool(BaseTool):
 class GetHolderDistributionTool(BaseTool):
     name = "get_holder_distribution"
     description = (
-        "Get top holders of a token with concentration metrics. Filters out "
-        "LP contracts and known locker addresses (which aren't really whales). "
-        "Returns top N holders, total supply held by top 10, and concentration "
-        "flags. High concentration (>50% in top 10 real holders) is a rug risk."
+        "Get top holders of an ERC-20 token. Primary data from Moralis; "
+        "Alchemy is run in parallel as a cross-check. Returns top N holders "
+        "by balance, aggregate holder count, and concentration metrics "
+        "(top-10 % of supply). Burn / zero addresses are filtered so stats "
+        "reflect REAL wallets. "
+        "IMPORTANT — interpret output: "
+        "if cross_check.agreement is false, explicitly communicate the "
+        "discrepancy to the user (both counts, likely cause). "
+        "if holder_count is null (data_unavailable_note present), do NOT "
+        "fabricate numbers — tell the user holder data is unavailable and why."
     )
     input_schema = {
         "type": "object",
@@ -151,61 +160,124 @@ class GetHolderDistributionTool(BaseTool):
             },
             "top_n": {
                 "type": "integer",
-                "description": "How many top holders to return (default 10, max 20).",
+                "description": "How many top holders to return (default 10, max 25).",
                 "minimum": 1,
-                "maximum": 20,
+                "maximum": 25,
             },
         },
         "required": ["chain", "token_address"],
     }
 
-    def __init__(self, client: GoPlusClient | None = None) -> None:
-        self._client = client or GoPlusClient()
+    _NON_HOLDER_ADDRESSES: set[str] = {
+        "0x0000000000000000000000000000000000000000",
+        "0x000000000000000000000000000000000000dead",
+    }
+
+    def __init__(
+        self,
+        moralis_client: MoralisClient | None = None,
+        alchemy_client: AlchemyClient | None = None,
+    ) -> None:
+        from app.clients.moralis import MoralisClient  # local import to avoid cycle
+        from app.clients.alchemy import AlchemyClient
+
+        self._moralis = moralis_client or MoralisClient()
+        self._alchemy = alchemy_client or AlchemyClient()
 
     async def execute(
         self,
-        chain: Chain,
+        chain: str,
         token_address: str,
         top_n: int = 10,
         **_: Any,
     ) -> dict[str, Any]:
-        data = await self._client.get_token_security(chain, token_address)
-        raw_holders = data.get("holders") or []
+        import asyncio
 
-        # Split: LP/contract holders vs. real EOA holders (the ones that matter)
-        real_holders: list[dict[str, Any]] = []
-        lp_or_contract_holders: list[dict[str, Any]] = []
+        moralis_result, alchemy_page = await asyncio.gather(
+            self._moralis.get_token_holders(chain, token_address, limit=100),  # type: ignore[arg-type]
+            self._alchemy.get_token_holders(chain, token_address),  # type: ignore[arg-type]
+            return_exceptions=True,
+        )
 
-        for h in raw_holders:
-            is_contract = h.get("is_contract") == 1
-            # Heuristic: LPs, bridges, lockers usually have 'tag' set or is_contract=1
-            if is_contract or h.get("is_locked") == 1:
-                lp_or_contract_holders.append(h)
-            else:
-                real_holders.append(h)
+        # Alchemy cross-check: count whatever owners it returned (often 0 for ERC-20 free tier)
+        if isinstance(alchemy_page, Exception):
+            alchemy_count = 0
+        else:
+            alchemy_count = len(alchemy_page.get("owners") or [])
 
-        # Format top N real holders
-        def _fmt(h: dict[str, Any]) -> dict[str, Any]:
+        # Moralis failed hard → surface unavailability, don't fabricate
+        if isinstance(moralis_result, Exception):
             return {
-                "address": h.get("address"),
-                "balance": h.get("balance"),
-                "percent": round(_s2f(h.get("percent")) * 100, 3),
-                "is_contract": h.get("is_contract") == 1,
-                "is_locked": h.get("is_locked") == 1,
-                "tag": h.get("tag") or None,
+                "chain": chain,
+                "token_address": token_address,
+                "holder_count": None,
+                "top_n_real_holders": [],
+                "top10_real_concentration_pct": None,
+                "extreme_concentration": None,
+                "cross_check": {"alchemy_holder_count": alchemy_count, "agreement": None},
+                "data_unavailable_note": (
+                    f"Moralis holder fetch failed: {moralis_result}. "
+                    "Do not estimate holder counts — report this to the user."
+                ),
             }
 
-        top_real = [_fmt(h) for h in real_holders[:top_n]]
-        top10_concentration = sum(
-            _s2f(h.get("percent")) for h in real_holders[:10]
-        ) * 100
+        holders: list[dict[str, Any]] = moralis_result["holders"]
+        moralis_total: int | None = moralis_result.get("total")  # aggregate count if returned
+
+        if not holders:
+            return {
+                "chain": chain,
+                "token_address": token_address,
+                "holder_count": moralis_total or 0,
+                "top_n_real_holders": [],
+                "top10_real_concentration_pct": 0.0,
+                "extreme_concentration": False,
+                "cross_check": {"alchemy_holder_count": alchemy_count, "agreement": alchemy_count == 0},
+                "message": "No holders found via Moralis.",
+            }
+
+        # Filter burn / zero addresses
+        real: list[dict[str, Any]] = []
+        excluded: list[dict[str, Any]] = []
+        for h in holders:
+            if h["owner_address"] in self._NON_HOLDER_ADDRESSES:
+                excluded.append(h)
+            else:
+                real.append(h)
+
+        top_real = real[:top_n]
+        top_real_formatted = [
+            {
+                "address": h["owner_address"],
+                "balance_raw": h["balance_raw"],
+                "percent": round(h["percentage"], 4),
+            }
+            for h in top_real
+        ]
+
+        top10_concentration = sum(h["percentage"] for h in real[:10])
+
+        # Use aggregate total from Moralis if available, else len of this page
+        holder_count = moralis_total if moralis_total is not None else len(holders)
+
+        # Agreement: within 10% of each other (Alchemy free tier often returns 0 for ERC-20)
+        if holder_count == 0 and alchemy_count == 0:
+            agreement = True
+        elif holder_count == 0:
+            agreement = False
+        else:
+            agreement = abs(holder_count - alchemy_count) / holder_count <= 0.10
 
         return {
             "chain": chain,
             "token_address": token_address,
-            "total_holder_count": int(_s2f(data.get("holder_count"))),
-            "top_n_real_holders": top_real,
+            "holder_count": holder_count,
+            "top_n_real_holders": top_real_formatted,
             "top10_real_concentration_pct": round(top10_concentration, 3),
             "extreme_concentration": top10_concentration > 50,
-            "lp_or_contract_holders": [_fmt(h) for h in lp_or_contract_holders[:5]],
+            "excluded_addresses_count": len(excluded),
+            "cross_check": {
+                "alchemy_holder_count": alchemy_count,
+                "agreement": agreement,
+            },
         }
