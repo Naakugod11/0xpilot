@@ -1,0 +1,23 @@
+# Curated list of known profitable / notable wallets.
+#
+# Each entry: address, label, tags, source (where the reputation comes from),
+# chains (if chain-specific, e.g. Solana-native traders).
+#
+# Update this file as you discover new smart money. Keep it small and
+# high-signal — watching 200 wallets gives noise, watching 20 gives alpha.
+#
+# Sources commonly used: Arkham, Nansen smart-money labels, public X threads,
+# Dune dashboards, on-chain researcher posts.
+
+wallets:
+  - address: "0xd8dA6BF26964aF9D7eEd9e03E53415D37aA96045"
+    label: "Vitalik Buterin"
+    tags: ["founder", "eth"]
+    source: "public"
+    chains: ["ethereum", "base", "arbitrum"]
+
+  - address: "0x000000000000000000000000000000000000dEaD"
+    label: "Burn address (reference)"
+    tags: ["burn"]
+    source: "public"
+    chains: ["ethereum", "base", "arbitrum", "bsc", "polygon", "optimism"]

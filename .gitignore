@@ -50,7 +50,6 @@ logs/
 # Telethon session files — NEVER commit
 *.session
 *.session-journal
-data/
 
 # Misc
 *.pid
