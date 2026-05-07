@@ -3,108 +3,198 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>0xpilot // autonomous web3 research agent</title>
+<title>0xpilot — autonomous web3 research agent</title>
+
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+
 <script src="https://cdn.tailwindcss.com"></script>
-<style>
-  body { font-family: 'JetBrains Mono', 'Courier New', monospace; }
-  .scanline::before {
-    content: ""; position: fixed; inset: 0; pointer-events: none;
-    background: linear-gradient(
-      to bottom, transparent 50%, rgba(255,176,0,0.025) 51%
-    );
-    background-size: 100% 4px; z-index: 1;
+<script>
+  tailwind.config = {
+    theme: {
+      extend: {
+        colors: {
+          bg: '#F5F0E8',
+          'bg-soft': '#EBE4D8',
+          ink: '#1A1426',
+          'ink-soft': '#4A3F5C',
+          primary: '#3D2B5E',
+          'primary-light': '#5D4583',
+          sage: '#7A8C6F',
+          mint: '#A8C09A',
+          alert: '#A03828',
+          neutral: '#C7BEAD',
+          meta: '#8B7E69',
+        },
+        fontFamily: {
+          sans: ['Inter', 'system-ui', 'sans-serif'],
+          mono: ['JetBrains Mono', 'ui-monospace', 'monospace'],
+        }
+      }
+    }
   }
-  .blink { animation: blink 1s step-start infinite; }
-  @keyframes blink { 50% { opacity: 0 } }
+</script>
+<style>
+  body {
+    font-family: 'Inter', system-ui, sans-serif;
+    background: #F5F0E8;
+    color: #1A1426;
+    line-height: 1.6;
+    -webkit-font-smoothing: antialiased;
+  }
+  .mono { font-family: 'JetBrains Mono', monospace; }
+  .blink { animation: blink 1.4s step-start infinite; }
+  @keyframes blink { 50% { opacity: 0.3 } }
   pre { white-space: pre-wrap; word-break: break-word; }
-  .glow { text-shadow: 0 0 8px rgba(255,176,0,0.55); }
-  details summary { cursor: pointer; user-select: none; }
+  details summary { cursor: pointer; user-select: none; list-style: none; }
   details summary::-webkit-details-marker { display: none; }
-  details summary::before { content: "▶ "; }
-  details[open] summary::before { content: "▼ "; }
+  details summary::before { content: "› "; color: #8B7E69; }
+  details[open] summary::before { content: "⌄ "; color: #3D2B5E; }
+  
+  /* Subtle paper texture for depth */
+  .paper-bg {
+    background-image:
+      radial-gradient(at 20% 30%, rgba(61, 43, 94, 0.02) 0px, transparent 50%),
+      radial-gradient(at 80% 70%, rgba(122, 140, 111, 0.025) 0px, transparent 50%);
+  }
+  
+  /* Ornamental divider */
+  .divider {
+    display: flex; align-items: center; gap: 16px;
+    color: #C7BEAD;
+    font-size: 12px;
+  }
+  .divider::before, .divider::after {
+    content: ""; flex: 1; height: 1px; background: currentColor;
+  }
+  
+  /* Scrollbar */
+  ::-webkit-scrollbar { width: 6px; height: 6px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb { background: #C7BEAD; border-radius: 3px; }
+  ::-webkit-scrollbar-thumb:hover { background: #8B7E69; }
+  
+  /* Botanical SVG ornament reveals on scroll, just decoration */
+  .ornament {
+    color: #C7BEAD;
+    opacity: 0.4;
+  }
 </style>
 </head>
-<body class="scanline bg-black text-amber-200 min-h-screen">
-<div class="max-w-4xl mx-auto px-4 py-8">
+<body class="paper-bg min-h-screen">
+<div class="max-w-3xl mx-auto px-6 py-12">
 
   <!-- Header -->
-  <header class="border border-amber-500 p-4 mb-6">
-    <pre class="text-amber-400 glow text-xs sm:text-sm leading-tight">
- ██████╗ ██╗  ██╗██████╗ ██╗██╗      ██████╗ ████████╗
-██╔═████╗╚██╗██╔╝██╔══██╗██║██║     ██╔═══██╗╚══██╔══╝
-██║██╔██║ ╚███╔╝ ██████╔╝██║██║     ██║   ██║   ██║
-████╔╝██║ ██╔██╗ ██╔═══╝ ██║██║     ██║   ██║   ██║
-╚██████╔╝██╔╝ ██╗██║     ██║███████╗╚██████╔╝   ██║
- ╚═════╝ ╚═╝  ╚═╝╚═╝     ╚═╝╚══════╝ ╚═════╝    ╚═╝</pre>
-    <div class="mt-3 flex flex-wrap gap-3 text-xs">
-      <span class="text-amber-300">// autonomous web3 research agent</span>
-      <span id="tool-badge" class="border border-amber-700 text-amber-400 px-2">
-        <span class="blink">█</span> LOADING TOOLS...
-      </span>
-      <span id="connection-badge" class="border border-amber-700 text-amber-500 px-2">
+  <header class="mb-12">
+    <div class="flex items-baseline justify-between mb-2">
+      <h1 class="mono text-4xl font-bold text-primary tracking-tight">0xpilot</h1>
+      <span id="connection-badge" class="mono text-xs text-meta border border-neutral px-2 py-0.5">
         IDLE
       </span>
     </div>
+    <p class="text-ink-soft text-base mb-6 max-w-xl">
+      An autonomous research agent for crypto.
+      You ask, it decides which on-chain tools to call and writes you back a structured report —
+      red flags first, bullish factors second, an honest assessment last.
+    </p>
+    
+    <div class="flex flex-wrap gap-4 text-xs mono text-meta items-center">
+      <span id="tool-badge" class="flex items-center gap-1.5">
+        <span class="blink text-primary">●</span>
+        <span>loading tools…</span>
+      </span>
+      <span class="text-neutral">·</span>
+      <a href="https://github.com/Naakugod11/0xpilot" target="_blank" class="hover:text-primary transition-colors">github</a>
+      <span class="text-neutral">·</span>
+      <a href="/tools" target="_blank" class="hover:text-primary transition-colors">tool catalog</a>
+      <span class="text-neutral">·</span>
+      <a href="/metrics" target="_blank" class="hover:text-primary transition-colors">live metrics</a>
+    </div>
   </header>
 
+  <!-- Botanical ornament SVG -->
+  <div class="ornament mb-8 flex justify-center">
+    <svg width="60" height="20" viewBox="0 0 60 20" fill="none" xmlns="http://www.w3.org/2000/svg">
+      <path d="M5 10 Q 15 4, 30 10 T 55 10" stroke="currentColor" stroke-width="0.8" fill="none"/>
+      <circle cx="30" cy="10" r="2" fill="currentColor" opacity="0.6"/>
+      <path d="M27 8 L 30 10 L 33 8" stroke="currentColor" stroke-width="0.6" fill="none"/>
+      <path d="M27 12 L 30 10 L 33 12" stroke="currentColor" stroke-width="0.6" fill="none"/>
+    </svg>
+  </div>
+
   <!-- Suggested queries -->
-  <section class="mb-4">
-    <div class="text-xs text-amber-600 mb-2">// suggested queries</div>
+  <section class="mb-8">
+    <p class="mono text-xs text-meta uppercase tracking-widest mb-3">try one of these</p>
     <div class="flex flex-wrap gap-2">
-      <button class="suggestion border border-amber-800 hover:border-amber-400 hover:text-amber-300 hover:bg-amber-900/20 text-amber-500 px-3 py-1 text-xs transition" data-q="compare gas on ethereum, base, and arbitrum">
+      <button class="suggestion text-sm px-3 py-1.5 border border-neutral text-ink-soft hover:border-primary hover:text-primary hover:bg-bg-soft transition-colors rounded-sm" data-q="compare gas on ethereum, base, and arbitrum">
         compare gas across chains
       </button>
-      <button class="suggestion border border-amber-800 hover:border-amber-400 hover:text-amber-300 hover:bg-amber-900/20 text-amber-500 px-3 py-1 text-xs transition" data-q="what is the address of vitalik.eth">
+      <button class="suggestion text-sm px-3 py-1.5 border border-neutral text-ink-soft hover:border-primary hover:text-primary hover:bg-bg-soft transition-colors rounded-sm" data-q="what is the address of vitalik.eth">
         resolve vitalik.eth
       </button>
-      <button class="suggestion border border-amber-800 hover:border-amber-400 hover:text-amber-300 hover:bg-amber-900/20 text-amber-500 px-3 py-1 text-xs transition" data-q="scan new pairs on base with at least 50k liquidity">
+      <button class="suggestion text-sm px-3 py-1.5 border border-neutral text-ink-soft hover:border-primary hover:text-primary hover:bg-bg-soft transition-colors rounded-sm" data-q="scan new pairs on base with at least 50k liquidity">
         scan new base pairs
       </button>
-      <button class="suggestion border border-amber-800 hover:border-amber-400 hover:text-amber-300 hover:bg-amber-900/20 text-amber-500 px-3 py-1 text-xs transition" data-q="if I had bought 500 USD of solana 60 days ago, what would it be worth now">
+      <button class="suggestion text-sm px-3 py-1.5 border border-neutral text-ink-soft hover:border-primary hover:text-primary hover:bg-bg-soft transition-colors rounded-sm" data-q="if I had bought 500 USD of solana 60 days ago, what would it be worth now">
         simulate SOL entry
       </button>
-      <button class="suggestion border border-amber-800 hover:border-amber-400 hover:text-amber-300 hover:bg-amber-900/20 text-amber-500 px-3 py-1 text-xs transition" data-q="explain how Uniswap V3 concentrated liquidity works using the 0xbrain knowledge base">
-        query 0xbrain
+      <button class="suggestion text-sm px-3 py-1.5 border border-neutral text-ink-soft hover:border-primary hover:text-primary hover:bg-bg-soft transition-colors rounded-sm" data-q="explain how Uniswap V3 concentrated liquidity works using the 0xbrain knowledge base">
+        ask 0xbrain about uniswap V3
       </button>
     </div>
   </section>
 
   <!-- Input -->
-  <section class="mb-6">
-    <div class="border border-amber-500">
-      <div class="flex">
-        <span class="bg-amber-900/30 text-amber-400 px-3 py-2">$</span>
-        <input
-          id="prompt-input"
-          class="flex-1 bg-black text-amber-200 px-3 py-2 outline-none placeholder-amber-700"
-          placeholder="ask the agent anything..."
-          autofocus
-        />
-        <button
-          id="send-btn"
-          class="bg-amber-500 text-black px-4 py-2 hover:bg-amber-400 disabled:opacity-50 disabled:cursor-not-allowed font-bold"
-        >
-          EXEC
-        </button>
-      </div>
+  <section class="mb-10">
+    <div class="flex border border-ink rounded-sm overflow-hidden bg-white/40">
+      <span class="mono bg-ink text-bg px-3 py-3 flex items-center text-sm">›</span>
+      <input
+        id="prompt-input"
+        class="flex-1 bg-transparent px-3 py-3 outline-none text-ink placeholder-meta text-sm"
+        placeholder="ask the agent anything…"
+        autofocus
+      />
+      <button
+        id="send-btn"
+        class="mono bg-primary text-bg px-5 py-3 hover:bg-primary-light disabled:opacity-40 disabled:cursor-not-allowed text-xs font-semibold uppercase tracking-wider transition-colors"
+      >
+        send
+      </button>
     </div>
   </section>
 
   <!-- Output area -->
-  <main id="output" class="space-y-4"></main>
+  <main id="output" class="space-y-8"></main>
 
   <!-- Footer -->
-  <footer class="mt-12 pt-4 border-t border-amber-900/40 text-xs text-amber-700 flex flex-wrap gap-4 justify-between">
-    <div>
-      <a href="https://github.com/Naakugod11/0xpilot" target="_blank" class="hover:text-amber-400">github</a>
-       · 
-      <a href="/tools" target="_blank" class="hover:text-amber-400">tools.json</a>
-       · 
-      <a href="/metrics" target="_blank" class="hover:text-amber-400">metrics</a>
+  <footer class="mt-20 pt-8 border-t border-neutral">
+    <div class="ornament mb-6 flex justify-center">
+      <svg width="80" height="16" viewBox="0 0 80 16" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <path d="M5 8 L 35 8" stroke="currentColor" stroke-width="0.6"/>
+        <path d="M45 8 L 75 8" stroke="currentColor" stroke-width="0.6"/>
+        <circle cx="40" cy="8" r="1.5" fill="currentColor" opacity="0.5"/>
+        <path d="M37 5 L 40 8 L 43 5" stroke="currentColor" stroke-width="0.5" fill="none" opacity="0.7"/>
+        <path d="M37 11 L 40 8 L 43 11" stroke="currentColor" stroke-width="0.5" fill="none" opacity="0.7"/>
+      </svg>
     </div>
-    <div>
-      built by <a href="https://x.com/naaku_builds" target="_blank" class="hover:text-amber-400">@naaku_builds</a>
-       · powered by <a href="https://www.coingecko.com/" target="_blank" class="hover:text-amber-400">coingecko</a>
+    <div class="flex flex-wrap justify-between items-baseline gap-4 text-xs text-meta">
+      <p>
+        Phase 3 of a Web3 + AI roadmap.
+        <a href="https://github.com/Naakugod11/web3-ai-agent" target="_blank" class="hover:text-primary transition-colors">phase 1</a>
+        ·
+        <a href="https://github.com/Naakugod11/0xbrain" target="_blank" class="hover:text-primary transition-colors">phase 2</a>
+        ·
+        <span class="text-primary font-medium">phase 3</span>
+        · <span class="text-neutral">trading bot</span>
+        · <span class="text-neutral">ZK</span>
+      </p>
+      <p>
+        built by 
+        <a href="https://x.com/naaku_builds" target="_blank" class="hover:text-primary transition-colors font-medium">@naaku_builds</a>
+        · powered by 
+        <a href="https://www.coingecko.com/" target="_blank" class="hover:text-primary transition-colors">coingecko</a>
+      </p>
     </div>
   </footer>
 </div>
@@ -114,9 +204,11 @@ const API_BASE = window.location.origin;
 
 // ─── Load tool count ──────────────────────────────────────────
 fetch(`${API_BASE}/tools`).then(r => r.json()).then(data => {
-  document.getElementById("tool-badge").textContent = `${data.count} TOOLS LOADED`;
+  document.getElementById("tool-badge").innerHTML =
+    `<span class="text-primary">●</span><span>${data.count} tools available</span>`;
 }).catch(() => {
-  document.getElementById("tool-badge").textContent = "TOOLS UNAVAILABLE";
+  document.getElementById("tool-badge").innerHTML =
+    `<span class="text-alert">●</span><span>tools unavailable</span>`;
 });
 
 // ─── DOM refs ─────────────────────────────────────────────────
@@ -143,20 +235,24 @@ sendBtn.addEventListener("click", async () => {
 
   sendBtn.disabled = true;
   conn.textContent = "STREAMING";
-  conn.className = "border border-amber-300 text-amber-300 px-2";
+  conn.className = "mono text-xs text-primary border border-primary px-2 py-0.5";
 
   const block = document.createElement("section");
-  block.className = "border border-amber-800 p-4";
+  block.className = "border border-neutral rounded-sm bg-white/30 p-6 space-y-5";
   block.innerHTML = `
-    <div class="text-xs text-amber-600 mb-2">// query</div>
-    <div class="text-amber-200 mb-4">> ${escapeHtml(message)}</div>
-    <div class="text-xs text-amber-600 mb-2">// tool timeline</div>
-    <div data-role="timeline" class="space-y-2 mb-4 text-sm"></div>
-    <div data-role="reply" class="hidden border-t border-amber-900/40 pt-3">
-      <div class="text-xs text-amber-600 mb-2">// reply</div>
-      <div data-role="reply-text" class="text-amber-200 leading-relaxed"></div>
+    <div>
+      <p class="mono text-xs uppercase tracking-widest text-meta mb-2">your question</p>
+      <p class="text-ink leading-relaxed">${escapeHtml(message)}</p>
     </div>
-    <div data-role="meta" class="hidden mt-3 text-xs text-amber-700"></div>
+    <div data-role="timeline-wrap">
+      <p class="mono text-xs uppercase tracking-widest text-meta mb-3">agent activity</p>
+      <div data-role="timeline" class="space-y-2"></div>
+    </div>
+    <div data-role="reply" class="hidden pt-4 border-t border-neutral">
+      <p class="mono text-xs uppercase tracking-widest text-meta mb-3">reply</p>
+      <div data-role="reply-text" class="text-ink leading-relaxed prose prose-sm max-w-none"></div>
+    </div>
+    <div data-role="meta" class="hidden mono text-xs text-meta pt-2"></div>
   `;
   output.prepend(block);
   input.value = "";
@@ -199,12 +295,12 @@ sendBtn.addEventListener("click", async () => {
   } catch (err) {
     timelineEl.insertAdjacentHTML(
       "beforeend",
-      `<div class="text-red-400">! stream error: ${escapeHtml(err.message)}</div>`
+      `<div class="text-alert text-sm">! stream error: ${escapeHtml(err.message)}</div>`
     );
   } finally {
     sendBtn.disabled = false;
     conn.textContent = "IDLE";
-    conn.className = "border border-amber-700 text-amber-500 px-2";
+    conn.className = "mono text-xs text-meta border border-neutral px-2 py-0.5";
     input.focus();
   }
 });
@@ -215,27 +311,31 @@ function handleEvent(evt, timelineEl, replyWrap, replyText, metaEl) {
     case "iteration_start": {
       timelineEl.insertAdjacentHTML(
         "beforeend",
-        `<div class="text-amber-600 text-xs">[iter ${evt.iteration}] thinking...</div>`
+        `<p class="mono text-xs text-meta">› thinking (iteration ${evt.iteration})</p>`
       );
       break;
     }
     case "tool_call": {
       const ok = !evt.error;
-      const color = ok ? "text-amber-400" : "text-red-400";
-      const symbol = ok ? "✓" : "✗";
       const argsStr = JSON.stringify(evt.arguments);
+      const symbolColor = ok ? "text-sage" : "text-alert";
+      const symbol = ok ? "✓" : "✗";
       const card = document.createElement("div");
-      card.className = `border border-amber-900 p-2 ${color}`;
+      card.className = "border border-neutral bg-bg-soft/50 rounded-sm p-3 text-sm";
       card.innerHTML = `
-        <div class="flex justify-between gap-2 text-xs">
-          <span><span class="font-bold">${symbol} ${evt.tool_name}</span> <span class="text-amber-600">${escapeHtml(argsStr)}</span></span>
-          <span class="text-amber-700">${evt.duration_ms}ms</span>
+        <div class="flex justify-between gap-3 items-baseline">
+          <div class="flex gap-2 items-baseline">
+            <span class="mono ${symbolColor} text-base">${symbol}</span>
+            <span class="mono font-medium text-primary">${evt.tool_name}</span>
+            <span class="mono text-xs text-meta truncate max-w-md">${escapeHtml(argsStr)}</span>
+          </div>
+          <span class="mono text-xs text-meta whitespace-nowrap">${evt.duration_ms}ms</span>
         </div>
         ${ok
-          ? `<details class="mt-2 text-xs"><summary class="text-amber-700">result</summary>
-              <pre class="text-amber-300 mt-1 max-h-40 overflow-auto">${escapeHtml(JSON.stringify(evt.result, null, 2))}</pre>
+          ? `<details class="mt-2"><summary class="mono text-xs text-meta hover:text-primary">view result</summary>
+              <pre class="mono mt-2 p-2 bg-white/50 text-xs text-ink-soft overflow-auto max-h-48 rounded-sm">${escapeHtml(JSON.stringify(evt.result, null, 2))}</pre>
             </details>`
-          : `<div class="mt-1 text-xs">${escapeHtml(evt.error)}</div>`
+          : `<p class="mt-2 text-xs text-alert mono">${escapeHtml(evt.error)}</p>`
         }
       `;
       timelineEl.appendChild(card);
@@ -248,13 +348,13 @@ function handleEvent(evt, timelineEl, replyWrap, replyText, metaEl) {
     }
     case "done": {
       metaEl.classList.remove("hidden");
-      metaEl.textContent = `// ${evt.iterations_used} iterations · ${evt.tool_calls_count} tool calls · ${evt.input_tokens + evt.output_tokens} tokens · stop=${evt.stop_reason}`;
+      metaEl.innerHTML = `${evt.iterations_used} iterations · ${evt.tool_calls_count} tool calls · ${evt.input_tokens + evt.output_tokens} tokens · stop=${evt.stop_reason}`;
       break;
     }
     case "error": {
       timelineEl.insertAdjacentHTML(
         "beforeend",
-        `<div class="text-red-400">! ${escapeHtml(evt.message)}</div>`
+        `<p class="text-alert text-sm">! ${escapeHtml(evt.message)}</p>`
       );
       break;
     }
@@ -268,20 +368,23 @@ function escapeHtml(str) {
   }[c]));
 }
 
-// Tiny markdown renderer
+// Tiny markdown renderer with semantic style mapping
 function renderMarkdown(text) {
   const html = escapeHtml(text)
-    .replace(/\*\*(.+?)\*\*/g, "<strong class='text-amber-400'>$1</strong>")
+    .replace(/🚩/g, '<span class="text-alert">▲</span>')
+    .replace(/⚠️/g, '<span class="text-alert">!</span>')
+    .replace(/⛔/g, '<span class="text-alert">✕</span>')
+    .replace(/\*\*(.+?)\*\*/g, '<strong class="text-primary font-semibold">$1</strong>')
     .replace(/\*(.+?)\*/g, "<em>$1</em>")
-    .replace(/`([^`]+)`/g, "<code class='bg-amber-950/50 px-1 text-amber-300'>$1</code>")
-    .replace(/^### (.+)$/gm, "<h3 class='text-amber-400 mt-3 mb-1 font-bold'>$1</h3>")
-    .replace(/^## (.+)$/gm, "<h2 class='text-amber-400 mt-4 mb-2 font-bold text-lg'>$1</h2>")
-    .replace(/^# (.+)$/gm, "<h1 class='text-amber-400 mt-4 mb-2 font-bold text-xl'>$1</h1>")
-    .replace(/\n- (.+)/g, "\n<li>$1</li>")
-    .replace(/(<li>.*<\/li>)/s, "<ul class='list-disc list-inside ml-2 my-2'>$1</ul>")
-    .replace(/\n\n/g, "<br><br>")
+    .replace(/`([^`]+)`/g, '<code class="mono bg-bg-soft px-1.5 py-0.5 text-xs text-primary rounded-sm">$1</code>')
+    .replace(/^### (.+)$/gm, '<h3 class="text-primary mt-5 mb-2 font-semibold text-base mono">$1</h3>')
+    .replace(/^## (.+)$/gm, '<h2 class="text-primary mt-6 mb-3 font-semibold text-lg mono">$1</h2>')
+    .replace(/^# (.+)$/gm, '<h1 class="text-primary mt-6 mb-3 font-bold text-xl mono">$1</h1>')
+    .replace(/\n- (.+)/g, "\n<li class='ml-4 my-1'>$1</li>")
+    .replace(/(<li>.*?<\/li>)/gs, "<ul class='list-disc list-inside my-3 space-y-1'>$1</ul>")
+    .replace(/\n\n/g, "</p><p class='my-3'>")
     .replace(/\n/g, "<br>");
-  return html;
+  return `<p>${html}</p>`;
 }
 </script>
 </body>
