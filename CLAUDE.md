@@ -58,7 +58,7 @@ tests/                  # ~80+ tests, hot paths covered
 | `scan_new_pairs` | Dexscreener | New pairs filtered by chain + min liquidity |
 | `get_token_social_stats` | Dexscreener | Websites, socials |
 | `get_token_security` | GoPlus | Honeypot, taxes, mint auth, LP lock, hidden owner |
-| `get_holder_distribution` | Etherscan + Alchemy cross-check | Dual-source, flags disagreement |
+| `get_holder_distribution` | Moralis + Alchemy cross-check | Dual-source, flags disagreement |
 | `get_wallet_pnl` | Zerion | Multi-chain PnL |
 | `track_smart_money` | Zerion + YAML | Trades of curated wallets |
 | `get_historical_ohlc` | Coingecko | Candles + drawdown stats |
@@ -68,6 +68,12 @@ tests/                  # ~80+ tests, hot paths covered
 | `query_0xbrain` | Phase 2 RAG | Whitepaper retrieval |
 
 Block 5 (Telegram + Twitter social) is parked for Phase 3.7. Solana support is Phase 3.5 via Helius.
+
+## Parked tools
+
+| Tool | Code | Reason parked | Target phase |
+|---|---|---|---|
+| `detect_fair_value_gaps` | `app/tools/technical.py`, `app/clients/bybit.py` | Bybit v5 public API returns 403 from cloud provider IPs (Railway/GCP) even with browser User-Agent. Works locally, unusable in production. | Phase 4 — revisit with self-hosted Cloudflare Worker proxy or paid TA data provider (e.g. TradingView, Tardis) |
 
 ## Chain support
 
