@@ -1,87 +1,117 @@
 # 0xpilot
 
-**Autonomous Web3 research agent with tool use.** Built for degens who want real
-alpha: meme coin scanning, security checks, wallet PnL, smart money tracking,
-social hype signal — all callable by an LLM that decides what to fetch.
+Autonomous research agent for crypto. Built to filter rugs before I ape into them.
+
+You give it a token, wallet, or question. It autonomously decides which on-chain
+tools to call, gathers evidence across chains, then writes back a structured
+report — red flags first, bullish factors second, an honest verdict last with
+confidence rating. Red flag indicators (honeypot, unlocked LP, whale concentration,
+unverified contract) override bullish signals — no "this token looks great" without
+first stating "but 100% of supply is in 2 wallets".
+
+→ **Live: [0xpilot-production.up.railway.app](https://0xpilot-production.up.railway.app/)**
 
 Phase 3 of a personal Web3 + AI roadmap:
-`web3-ai-agent` (Phase 1) → `0xbrain` (Phase 2 RAG) → **0xpilot** (Phase 3) → trading bot (Phase 4) → ZK (Phase 5).
+[`web3-ai-agent`](https://github.com/Naakugod11/web3-ai-agent) (Phase 1) →
+[`0xbrain`](https://github.com/Naakugod11/0xbrain) (Phase 2 RAG) →
+**0xpilot** (Phase 3) → trading bot → ZK.
 
-## Why
+## What it actually does
 
-Most "AI + crypto agent" projects are either read-only wallet explorers or
-abstract tool-use demos. 0xpilot is built around the workflow I actually want
-to run before entering a position: scan new pairs, check rug indicators,
-look at holder distribution, check who's aping, check the TG / X chatter,
-run the numbers on a hypothetical entry.
+Ask it `is the token at 0xA27EC0006e59f245217Ff08CD52A7E8b169E62D2 on ethereum a rug?`
 
-The agent decides which of those tools to call based on the question. The
-tools themselves are the research layer Phase 4 (trading bot) will consume.
+In ~4 seconds it pulls market data from Dexscreener, runs a security check via
+GoPlus, fetches holder distribution from Moralis with an Alchemy cross-check,
+checks social presence, then synthesizes:
 
-## Architecture
+```text
+🚩 Red Flags
+- Contract source code NOT verified — cannot independently audit
+- No locked LP detected — liquidity can be pulled at any time
+- Extreme holder concentration: 100% in top 10 wallets
+- Token age <7 days with $62M market cap
 
-```
-User → FastAPI /chat → AgentLoop ──▶ Anthropic API (tool use)
-                          │            │
-                          ▼            ▼
-                   ToolRegistry ◀── tool_use blocks
-                          │
-                          ├─ Market data  (Dexscreener, Coingecko)
-                          ├─ Security     (GoPlus)
-                          ├─ Wallet intel (Zerion + curated smart-money YAML)
-                          ├─ On-chain     (Alchemy — holders, gas, ENS)
-                          ├─ Social       (Telegram via Telethon, X via API/Nitter)
-                          └─ Knowledge    (0xbrain RAG)
+Assessment
+- Overall: Extremely bearish / likely scam
+- Confidence: High
+- This is a brand impersonation of the real Aztec Network privacy
+  protocol. The on-chain setup is a classic exit scam pattern.
 ```
 
-Design principles:
+Real example. Caught a fake AZTEC impersonation token live during testing
+(2 holders 50/50 split, unverified contract, no LP lock) in 2 iterations
+and 4 tool calls.
 
-- **No agent framework.** The loop is hand-rolled on the raw Anthropic SDK —
-  transparent control flow, no hidden state, no magic.
-- **Tool registry pattern.** Each tool is a `BaseTool` subclass with JSON schema
-  + `async execute()`. Adding a tool = single file change.
-- **Observability from day one.** structlog JSON logs, request-id propagation,
-  per-tool latency and token counters.
-- **Red flags override bullish signals.** Agent output always surfaces rug
-  indicators before analysis — no "this token looks great" without first
-  stating "but 67% of supply is in 3 wallets".
-- **Test coverage target: 80%+ on `app/agent/loop.py`.**
+## How it works
+User → FastAPI /chat or /chat/stream
+↓
+AgentLoop ─── multi-iteration tool use ──→ Anthropic API
+│
+▼
+ToolRegistry ──→ 12 tools across 6 chains
+│
+├─ Market data        Dexscreener + Coingecko
+├─ Security           GoPlus (honeypot, taxes, LP lock, mint auth)
+├─ Holder distribution Moralis + Alchemy cross-check (dual-source)
+├─ Wallet intelligence Zerion + curated smart-money YAML
+├─ On-chain            Alchemy (gas, ENS, RPC)
+├─ Historical          Coingecko OHLC + entry simulation
+└─ Knowledge           0xbrain RAG (queries Phase 2 service over HTTP)
 
-## Chain Strategy
+No agent framework. The loop is hand-rolled on the raw Anthropic SDK so I
+actually understand what's running. ~150 lines of explicit control flow,
+multi-iteration with token + iteration budget guards, tool errors recover
+into the conversation instead of crashing the request.
 
-- **First-class (Phase 3):** Ethereum, Base
-- **Opportunistic (Phase 3):** Arbitrum, BNB Chain — supported by default
-  through Zerion's unified API, not individually tested per tool
-- **Phase 3.5:** Solana (Helius) — added as a separate milestone once EVM
-  ships clean
-- **Out of scope:** Polygon, Blast, Berachain, Bitcoin Ordinals
+Observability from day one: structlog JSON logs with request-id propagation,
+in-memory metrics collector exposing per-tool p50/p95/p99 latencies and token
+usage at `/metrics`.
 
-The focus reflects where trading activity actually concentrates in 2026:
-Solana + Base dominate meme/small-cap flow; Ethereum covers mid/large caps
-and blue-chip DeFi. Everything else is noise for this use case.
+## Tools
 
-## Tool Surface (v1, EVM)
+| Tool | Source | Purpose |
+|---|---|---|
+| `get_token_overview` | Dexscreener | Most-liquid pair: price, liq, FDV, 24h change |
+| `scan_new_pairs` | Dexscreener | New pairs filtered by chain + min liquidity |
+| `get_token_social_stats` | Dexscreener | Websites, socials, project metadata |
+| `get_token_security` | GoPlus | Honeypot, taxes, mint authority, LP lock, hidden owner |
+| `get_holder_distribution` | Moralis + Alchemy | Top holders + concentration with cross-source agreement check |
+| `get_wallet_pnl` | Zerion | Realized + unrealized PnL across chains |
+| `track_smart_money` | Zerion + curated YAML | Recent trades of curated wallets (foundations, DAOs, attested founders) |
+| `get_historical_ohlc` | Coingecko | Candles + summary stats (drawdown, range %) |
+| `simulate_entry` | computed | "If I'd bought $X of Y N days ago, where would I be now" |
+| `get_gas_price` | Alchemy | Live gas across 5 EVM chains |
+| `resolve_ens` | Alchemy raw RPC | Bidirectional ENS ↔ address (no `ens` package dependency) |
+| `query_0xbrain` | 0xbrain RAG | Whitepaper retrieval via my Phase 2 service |
 
-| Block | Tool | Source | Purpose |
-|---|---|---|---|
-| 1 | `get_token_overview` | Dexscreener | Price, volume, liq, FDV, 24h change |
-| 1 | `scan_new_pairs` | Dexscreener | New pairs with min-liq / min-holders filter |
-| 1 | `get_token_social_stats` | Dexscreener/LunarCrush | Socials, followers, links |
-| 2 | `get_token_security` | GoPlus | Rug indicators: locked liq, mint auth, taxes |
-| 2 | `get_holder_distribution` | Alchemy | Top N holders, concentration ratio |
-| 3 | `get_wallet_pnl` | Zerion | Realized + unrealized PnL, net invested |
-| 3 | `track_smart_money` | Zerion + curated YAML | Recent trades of known profitable wallets |
-| 4 | `get_historical_ohlc` | Coingecko | OHLCV for simulations |
-| 4 | `simulate_entry` | computed | "If I'd bought $X of token Y at time T, I'd have Z now" |
-| 5 | `scan_telegram_channel` | Telethon | Last N msgs, token mention frequency |
-| 5 | `scan_twitter_mentions` | X API / Nitter | Recent mentions, engagement proxy |
-| 6 | `get_gas_price` | Alchemy | Current gas |
-| 6 | `resolve_ens` | Alchemy | Bidirectional ENS ↔ address |
-| 6 | `query_0xbrain` | 0xbrain RAG | Retrieve from the Phase 2 whitepaper knowledge base |
+## Chain support
 
-**x402 demo feature:** Zerion supports pay-per-call on Base (0.01 USDC).
-`get_wallet_pnl` optionally routes through x402 to demonstrate autonomous
-agent payment — flippable via env flag for the Dev Day demo.
+First-class: **Ethereum, Base** (full tool coverage, primary RPCs).
+Opportunistic via Zerion's unified API: Arbitrum, BSC, Polygon, Optimism.
+Solana → Phase 3.5 via Helius once EVM ships clean.
+
+The selection isn't comprehensive on purpose. Trading actually concentrates
+on Solana + Base + Ethereum mainnet in 2026. Polygon and Blast are noise for
+this use case. Better to support 6 chains well than 15 chains poorly.
+
+## What's not in here yet
+
+**Social / hype layer (Telegram + X).** Telegram via Telethon needs a
+session-key setup that doesn't fit a clean public deploy without a burner
+account; X free tier is useless in 2026 for any real signal. Will land as
+Phase 3.7 with LunarCrush as the X data source and a properly isolated
+Telegram session.
+
+**Technical analysis (FVG / SMC patterns).** Prototyped against Bybit v5
+public API but parked for v1 — Bybit's WAF returns 403 from cloud provider
+IPs even with browser User-Agent, and Binance is regionally blocked from
+Germany. Code stays in the repo (`app/tools/technical.py`, `app/clients/bybit.py`).
+Will return in Phase 4 with a proper data path (self-hosted proxy or paid TA provider).
+
+**Trading actions.** This is read-only by design. The agent never signs
+anything, never sends a transaction. The write layer (Vault contract,
+performance fee logic, emergency pause) belongs in Phase 4 where it's
+actually a trading bot, not a research agent.
 
 ## Setup
 
@@ -90,73 +120,58 @@ agent payment — flippable via env flag for the Dev Day demo.
 uv sync
 
 cp .env.example .env
-# fill in API keys — see .env.example for which are required vs optional
+# fill: ANTHROPIC_API_KEY, ALCHEMY_API_KEY, ZERION_API_KEY,
+#       COINGECKO_API_KEY, MORALIS_API_KEY, OXBRAIN_BASE_URL
 
 uv run uvicorn app.main:app --reload
 ```
 
-Smoke check:
-
-```bash
-curl http://localhost:8000/health
-# {"status":"ok","version":"0.1.0","environment":"dev"}
-```
+UI at `http://localhost:8000`, raw API at `/chat` and streaming at `/chat/stream`.
+Tool catalog at `/tools`. Live metrics at `/metrics`.
 
 ## Development
 
 ```bash
-uv run pytest              # run tests
+uv run pytest              # ~95 tests, hot paths covered
 uv run ruff check .        # lint
 uv run ruff format .       # format
-uv run pre-commit install  # enable git hooks
 ```
 
-## Roadmap
+## Smart money registry
 
-### Phase 3 — EVM agent
-- [x] Step 1 — Repo setup, FastAPI skeleton, `/health`
-- [ ] Step 2 — Config, structured logging, request-id middleware
-- [ ] Step 3 — Alchemy client + first tool (`get_gas_price`) + tests
-- [ ] Step 4 — Tool registry pattern
-- [ ] Step 5 — Agent loop skeleton (single iteration)
-- [ ] Step 6 — Full agent loop (multi-iter, guards, errors)
-- [ ] Step 7 — Remaining tools, by block
-  - [ ] Block 1 — Dexscreener (3 tools)
-  - [ ] Block 2 — Security & holders (2 tools)
-  - [ ] Block 3 — Zerion wallet intel (2 tools)
-  - [ ] Block 4 — Historical & simulation (2 tools)
-  - [ ] Block 5 — Social (2 tools, riskier — cuttable if time is short)
-  - [ ] Block 6 — Basics & knowledge (3 tools)
-- [ ] Step 8 — Metrics polish
-- [ ] Step 9 — Integration tests for agent loop
-- [ ] Step 10 — Dockerize + Railway deploy
-- [ ] Step 11 — Frontend demo
-- [ ] Step 12 — Launch (README, demo GIF, X post)
+The `track_smart_money` tool reads `data/smart_money.yaml`. Default seed
+contains only public attribution — foundations, DAO treasuries, ENS-attested
+founders. No unverified random wallet labels.
 
-### Phase 3.5 — Solana extension
-- [ ] Helius client + `SolanaAdapter`
-- [ ] Extend existing tools with `chain="solana"`
-- [ ] Pump.fun-specific tools (`scan_pumpfun_new_launches`)
+To add tracked traders, the workflow documented in the file is:
+1. Find a candidate on Nansen Smart Money or Arkham
+2. Cross-check 90 days of their actual on-chain activity
+3. Add to the YAML with tags + source
 
-### Phase 4 — Trading bot
-- [ ] Multi-agent architecture consuming 0xpilot tools as research layer
-- [ ] Backtested recommendation engine with win-rate tracking
+Watching 200 wallets gives noise. Watching 20 well-chosen ones gives alpha.
 
-## What's not in v1
+## Stack
 
-- **Social scraping (Telegram / X).** Parked for Phase 3.7 — Telethon session
-  management and X API costs are non-trivial for a v1 deploy.
-- **Technical analysis (FVG / SMC patterns).** Prototyped against Bybit v5 but
-  parked for v1: cloud provider IPs hit exchange WAFs even with browser
-  User-Agent. Will return in Phase 4 with a proper data path. Code remains in
-  the repo (`app/tools/technical.py`, `app/clients/bybit.py`).
-- **Solana.** Phase 3.5 milestone, requires Helius integration.
+- **Python 3.12+**, FastAPI, async httpx, web3 for raw `eth_call`
+- **Anthropic SDK** with hand-rolled tool use loop
+- **structlog** + JSON logs, in-memory metrics collector with asyncio.Lock
+- **uv** for package management, **ruff** for lint/format
+- **pytest** with `respx` for HTTP mocking, `pytest-asyncio`
+- **Tailwind CDN** + vanilla JS for the terminal UI (no build step)
+- **SSE** for streaming agent events to the frontend
+- **Docker** + Railway for deployment
 
 ## Related
 
-- [web3-ai-agent](https://github.com/Naakugod11/web3-ai-agent) — Phase 1
-- [0xbrain](https://github.com/Naakugod11/0xbrain) — Phase 2
+- [web3-ai-agent](https://github.com/Naakugod11/web3-ai-agent) — Phase 1: SIWE auth, structured AI outputs, on-chain data via web3
+- [0xbrain](https://github.com/Naakugod11/0xbrain) — Phase 2: RAG on protocol whitepapers, deployed and queried by Phase 3 as a tool
+
+## Attribution
+
+Market data sourced via [CoinGecko](https://www.coingecko.com/).
 
 ## License
 
 MIT
+
+Built in public by [@naaku_builds](https://x.com/naaku_builds).
