@@ -18,15 +18,7 @@ from typing import Any
 
 from app.observability.logger import get_logger
 from app.tools.base import BaseTool
-
-# FVG detection (DetectFairValueGapsTool) parked for Phase 4 trading bot.
-# Bybit v5 public API returns 403 from cloud provider IPs (confirmed
-# on Railway) even with a browser User-Agent header. Will revisit with
-# a self-hosted proxy or paid TA data provider in Phase 4 where this
-# tool's analysis is part of the trading bot's signal generation pipeline.
-# Code stays in the repo (app/tools/technical.py, app/clients/bybit.py,
-# tests/test_tools/test_technical.py) so the work isn't lost.
-# from app.tools.technical import DetectFairValueGapsTool
+from app.tools.technical import DetectFairValueGapsTool
 
 logger = get_logger(__name__)
 
@@ -110,5 +102,5 @@ def build_default_registry() -> ToolRegistry:
     registry.register(SimulateEntryTool())
     registry.register(ResolveEnsTool())
     registry.register(Query0xbrainTool())
-    # registry.register(DetectFairValueGapsTool())  # parked — see comment above import
+    registry.register(DetectFairValueGapsTool())
     return registry
