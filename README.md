@@ -142,6 +142,16 @@ uv run pre-commit install  # enable git hooks
 - [ ] Multi-agent architecture consuming 0xpilot tools as research layer
 - [ ] Backtested recommendation engine with win-rate tracking
 
+## What's not in v1
+
+- **Social scraping (Telegram / X).** Parked for Phase 3.7 — Telethon session
+  management and X API costs are non-trivial for a v1 deploy.
+- **Technical analysis (FVG / SMC patterns).** Prototyped against Bybit v5 but
+  parked for v1: cloud provider IPs hit exchange WAFs even with browser
+  User-Agent. Will return in Phase 4 with a proper data path. Code remains in
+  the repo (`app/tools/technical.py`, `app/clients/bybit.py`).
+- **Solana.** Phase 3.5 milestone, requires Helius integration.
+
 ## Related
 
 - [web3-ai-agent](https://github.com/Naakugod11/web3-ai-agent) — Phase 1
